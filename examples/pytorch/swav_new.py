@@ -14,14 +14,17 @@ from lightly.models import SwaV
 
 resnet = torchvision.models.resnet18()
 backbone = nn.Sequential(*list(resnet.children())[:-1])
-model = SwaV(backbone, num_ftrs=512, out_dim=128, n_prototypes=512)
+model = SwaV(backbone, num_ftrs=512, out_dim=128)
+
+criterion = SwaVLoss(input_dim=128)
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model.to(device)
 
 # we ignore object detection annotations by setting target_transform to return 0
 pascal_voc = torchvision.datasets.VOCDetection(
-    "datasets/pascal_voc", download=True, target_transform=lambda t: 0
+    "datasets/pascal_voc", download=False, target_transform=lambda t: 0
 )
 dataset = LightlyDataset.from_torch_dataset(pascal_voc)
 # or create a dataset from a folder containing images or videos:
@@ -38,16 +41,12 @@ dataloader = torch.utils.data.DataLoader(
     num_workers=8,
 )
 
-criterion = SwaVLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-
 print("Starting Training")
 for epoch in range(10):
     total_loss = 0
     for batch, _, _ in dataloader:
         batch = [x.to(device) for x in batch]
-        high_resolution, low_resolution = batch[:2], batch[2:]
-        high_resolution, low_resolution = model(high_resolution, low_resolution)
+        high_resolution, low_resolution = model(batch[:2], batch[2:])
         loss = criterion(high_resolution, low_resolution)
         total_loss += loss.detach()
         loss.backward()
